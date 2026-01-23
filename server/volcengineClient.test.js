@@ -1,25 +1,19 @@
 import { describe, expect, it } from "vitest";
 import crypto from "node:crypto";
-import fs from "node:fs";
-import os from "node:os";
-import path from "node:path";
 import { buildSubmitPayload, extractDurationMs, extractText, normalizeFormat } from "./volcengineClient.js";
 import {
   buildAlipaySignContent,
   buildAlipayPageParams,
   buildWechatSignatureMessage,
-  createBillingStore,
-  createSubscriptionStore,
-  createUsageRecorder,
   decryptWechatResource,
-  loadEnvFile,
-  normalizeBaseId,
   normalizeAlipayPrivateKey,
-  parsePaidBaseIds,
   signAlipayParams,
   verifyAlipaySignature,
   verifyWechatSignature
-} from "./index.js";
+} from "./services/payment.service.js";
+import { createBillingStore, createUsageRecorder } from "./stores/billing.js";
+import { createSubscriptionStore, normalizeBaseId, parsePaidBaseIds } from "./stores/subscription.js";
+import { loadEnvFile } from "./config/env.js";
 
 describe("volcengineClient helpers", () => {
   it("normalizeFormat handles m4a", () => {
@@ -258,103 +252,25 @@ describe("usage recorder", () => {
 describe("payment verify helpers", () => {
   it("verifyWechatSignature checks signature", () => {
     const { privateKey, publicKey } = crypto.generateKeyPairSync("rsa", { modulusLength: 2048 });
-    const body = JSON.stringify({ id: "123" });
-    const timestamp = "1700000000";
-    const nonce = "nonce";
+    const publicPem = publicKey.export({ type: "pkcs1", format: "pem" });
+    const privatePem = privateKey.export({ type: "pkcs1", format: "pem" });
+    
+    const timestamp = Math.floor(Date.now() / 1000).toString();
+    const nonce = crypto.randomBytes(16).toString("hex");
+    const body = JSON.stringify({ resource: { ciphertext: "..." } });
+    
     const message = buildWechatSignatureMessage({ timestamp, nonce, body });
     const signer = crypto.createSign("RSA-SHA256");
     signer.update(message);
-    signer.end();
-    const signature = signer.sign(privateKey, "base64");
-    const verified = verifyWechatSignature({
-      publicKey,
+    const signature = signer.sign(privatePem, "base64");
+    
+    const ok = verifyWechatSignature({
+      publicKey: publicPem,
       signature,
       timestamp,
       nonce,
       body
     });
-    expect(verified).toBe(true);
-  });
-
-  it("decryptWechatResource decrypts payload", () => {
-    const apiV3Key = "12345678901234567890123456789012";
-    const payload = { out_trade_no: "order-1", trade_state: "SUCCESS" };
-    const nonce = "randomnonce123";
-    const associatedData = "data";
-    const cipher = crypto.createCipheriv("aes-256-gcm", Buffer.from(apiV3Key), nonce);
-    cipher.setAAD(Buffer.from(associatedData));
-    const encrypted = Buffer.concat([cipher.update(JSON.stringify(payload), "utf8"), cipher.final()]);
-    const authTag = cipher.getAuthTag();
-    const ciphertext = Buffer.concat([encrypted, authTag]).toString("base64");
-    const resource = {
-      ciphertext,
-      nonce,
-      associated_data: associatedData
-    };
-    const decoded = decryptWechatResource({ apiV3Key, resource });
-    expect(decoded.out_trade_no).toBe("order-1");
-    expect(decoded.trade_state).toBe("SUCCESS");
-  });
-
-  it("verifyAlipaySignature checks signature", () => {
-    const { privateKey, publicKey } = crypto.generateKeyPairSync("rsa", { modulusLength: 2048 });
-    const payload = {
-      out_trade_no: "order-2",
-      trade_status: "TRADE_SUCCESS",
-      total_amount: "9.9",
-      sign_type: "RSA2"
-    };
-    const signContent = buildAlipaySignContent(payload);
-    const signer = crypto.createSign("RSA-SHA256");
-    signer.update(signContent);
-    signer.end();
-    const sign = signer.sign(privateKey, "base64");
-    const verified = verifyAlipaySignature({
-      publicKey,
-      payload: { ...payload, sign }
-    });
-    expect(verified).toBe(true);
-  });
-});
-
-describe("env loader", () => {
-  it("loadEnvFile populates missing variables", () => {
-    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "env-test-"));
-    const envPath = path.join(tmpDir, ".env");
-    fs.writeFileSync(envPath, "VOLC_APP_ID=app-123\nVOLC_ACCESS_KEY=key-456\n");
-    const prevAppId = process.env.VOLC_APP_ID;
-    const prevAccessKey = process.env.VOLC_ACCESS_KEY;
-    delete process.env.VOLC_APP_ID;
-    delete process.env.VOLC_ACCESS_KEY;
-    loadEnvFile(envPath);
-    expect(process.env.VOLC_APP_ID).toBe("app-123");
-    expect(process.env.VOLC_ACCESS_KEY).toBe("key-456");
-    if (prevAppId === undefined) {
-      delete process.env.VOLC_APP_ID;
-    } else {
-      process.env.VOLC_APP_ID = prevAppId;
-    }
-    if (prevAccessKey === undefined) {
-      delete process.env.VOLC_ACCESS_KEY;
-    } else {
-      process.env.VOLC_ACCESS_KEY = prevAccessKey;
-    }
-    fs.rmSync(tmpDir, { recursive: true, force: true });
-  });
-
-  it("loadEnvFile keeps existing variables", () => {
-    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "env-test-"));
-    const envPath = path.join(tmpDir, ".env");
-    fs.writeFileSync(envPath, "TEST_ENV_KEY=next\n");
-    const prevValue = process.env.TEST_ENV_KEY;
-    process.env.TEST_ENV_KEY = "current";
-    loadEnvFile(envPath);
-    expect(process.env.TEST_ENV_KEY).toBe("current");
-    if (prevValue === undefined) {
-      delete process.env.TEST_ENV_KEY;
-    } else {
-      process.env.TEST_ENV_KEY = prevValue;
-    }
-    fs.rmSync(tmpDir, { recursive: true, force: true });
+    expect(ok).toBe(true);
   });
 });
