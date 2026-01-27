@@ -537,3 +537,16 @@ tabButtons.forEach((button) => {
 
 refreshFields();
 setActivePage("transcribe");
+
+// 启用协议链接
+const termsLink = document.getElementById("termsLink");
+if (termsLink) {
+  termsLink.href = "./terms.html";
+  termsLink.classList.remove("hidden");
+}
+
+const privacyLink = document.getElementById("privacyLink");
+if (privacyLink) {
+  privacyLink.href = "./privacy.html";
+  privacyLink.classList.remove("hidden");
+}
