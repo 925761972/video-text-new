@@ -11,6 +11,7 @@ const enableDdcToggle = document.getElementById("enableDdc");
 const showUtterancesToggle = document.getElementById("showUtterances");
 const skipExistingOutputToggle = document.getElementById("skipExistingOutput");
 const runButton = document.getElementById("runButton");
+const stopButton = document.getElementById("stopButton");
 const statusEl = document.getElementById("status");
 const progressEl = document.getElementById("progress");
 const tabButtons = document.querySelectorAll("[data-page-target]");
@@ -33,12 +34,14 @@ const state = {
   baseId: ""
 };
 
+let shouldStop = false;
+
 const parsePositiveInt = (value, fallback) => {
   const parsed = Number.parseInt(value, 10);
   return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
 };
 
-const defaultFormats = ["mp3", "mp4", "wav", "m4a", "flac", "ogg", "aac"];
+const defaultFormats = ["mp3", "mp4", "wav", "m4a", "flac", "ogg", "aac", "mov", "avi", "wmv", "wma", "webm", "amr", "mkv", "3gp"];
 const allowedFormats = new Set(
   (import.meta.env?.VITE_ALLOWED_FORMATS || defaultFormats.join(","))
     .split(",")
@@ -369,6 +372,7 @@ const runWithConcurrency = async (tasks, limit) => {
   let nextIndex = 0;
   const runWorker = async () => {
     while (true) {
+      if (shouldStop) break;
       const current = nextIndex;
       nextIndex += 1;
       if (current >= tasks.length) {
@@ -397,6 +401,7 @@ const transcribeWithPolling = async (payload) => {
   let currentLogId = logId;
 
   for (let attempt = 0; attempt < 60; attempt += 1) {
+    if (shouldStop) throw new Error("用户停止");
     await wait(2000);
     const queryResult = await queryTranscribe({ taskId, logId: currentLogId, baseId: payload.baseId });
     if (queryResult.logId) {
@@ -427,7 +432,9 @@ const run = async () => {
     return;
   }
 
+  shouldStop = false;
   runButton.disabled = true;
+  stopButton.disabled = false;
   clearProgress();
   setStatus("处理中");
 
@@ -513,8 +520,15 @@ const run = async () => {
     setStatus(error.message || "处理失败");
   } finally {
     runButton.disabled = false;
+    stopButton.disabled = true;
   }
 };
+
+stopButton.addEventListener("click", () => {
+  shouldStop = true;
+  stopButton.disabled = true;
+  setStatus("正在停止...");
+});
 
 runButton.addEventListener("click", run);
 tabButtons.forEach((button) => {

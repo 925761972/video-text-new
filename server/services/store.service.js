@@ -70,7 +70,7 @@ const createWriteStore = (storePath, cache) => {
 export const initStores = () => {
   const env = process.env.NODE_ENV || "development";
   const storePath = process.env.SUBSCRIPTION_STORE_PATH || "";
-  const trialLimit = Number.parseInt(process.env.TRIAL_LIMIT || "2", 10);
+  const trialLimit = Number.parseInt(process.env.TRIAL_LIMIT || "3", 10);
   const allowBypass = env !== "production" && process.env.SUBSCRIPTION_BYPASS === "true";
   const paidBaseIds = parsePaidBaseIds(process.env.PAID_BASE_IDS || "");
   const adminBaseIds = parsePaidBaseIds(process.env.ADMIN_BASE_IDS || "");
