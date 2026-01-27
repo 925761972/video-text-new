@@ -1,189 +1,368 @@
+:root {
+  /* 基础色彩 - Neutral (中性色) */
+  --n-900: #1F2329;
+  --n-800: #2a2f38; /* 猜测值，规范图中未明确hex，基于色阶推断 */
+  --n-600: #646A73;
+  --n-500: #8F959E;
+  --n-400: #DEE0E3; /* 描边 */
+  --n-300: #E4E6EB; /* 卡片描边 */
+  --n-200: #EBEDF0; /* 禁用背景等 */
+  --n-100: #F5F6F7;
+  --n-50: #F8F9FA;
+  --n-00: #FFFFFF;
+
+  /* 基础色彩 - Brand (品牌色) */
+  --b-500: #3370FF;
+  --b-400: #4E83FD; /* Hover */
+  --b-600: #245bdb; /* Active */
+
+  /* 基础色彩 - Functional (功能色) */
+  --red-500: #F54A45;
+  --red-400: #F76965; /* Hover */
+  --red-600: #CB3D3D; /* Active */
+
+  /* 字体 */
+  --font-family: -apple-system, BlinkMacSystemFont, "Helvetica Neue", Tahoma, "PingFang SC", "Microsoft Yahei", Arial, "Hiragino Sans GB", sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji";
+  
+  /* 圆角 */
+  --radius-s: 4px;
+  --radius-m: 6px;
+  --radius-l: 8px;
+  --radius-xl: 12px;
+
+  /* 间距 */
+  --spacing-xs: 4px;
+  --spacing-s: 8px;
+  --spacing-m: 12px;
+  --spacing-l: 16px;
+  --spacing-xl: 24px;
+  --spacing-xxl: 32px;
+}
+
 * {
   box-sizing: border-box;
-  font-family: "PingFang SC", "Microsoft YaHei", sans-serif;
+  font-family: var(--font-family);
 }
 
 body {
   margin: 0;
-  background: #f7f8fa;
-  color: #1f2329;
+  background: var(--n-50);
+  color: var(--n-900);
+  font-size: 14px;
+  line-height: 1.5;
 }
 
 #app {
-  padding: 24px;
+  padding: var(--spacing-xl);
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: var(--spacing-l);
+  max-width: 800px;
+  margin: 0 auto;
 }
 
+/* Header */
 .header {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: var(--spacing-xs);
+  margin-bottom: var(--spacing-s);
 }
 
 .title {
   font-size: 20px;
   font-weight: 600;
+  color: var(--n-900);
+  line-height: 28px;
 }
 
 .subtitle {
-  color: #646a73;
-  font-size: 13px;
+  color: var(--n-600);
+  font-size: 14px;
 }
 
+/* Tabs */
 .tabs {
   display: flex;
-  gap: 8px;
-  margin-top: 8px;
-  flex-wrap: wrap;
+  gap: var(--spacing-l); /* 文字按钮间距 16px */
+  margin-top: var(--spacing-m);
+  border-bottom: 1px solid var(--n-300);
+  padding-bottom: 1px;
 }
 
 .tab {
-  height: 32px;
-  padding: 0 12px;
-  border-radius: 999px;
-  border: 1px solid #d0d3d6;
-  background: #ffffff;
-  color: #1f2329;
+  background: none;
+  border: none;
+  padding: var(--spacing-s) 0;
+  color: var(--n-600);
   cursor: pointer;
-  font-size: 13px;
+  font-size: 14px;
+  font-weight: 500;
+  position: relative;
+  transition: color 0.2s;
+}
+
+.tab:hover {
+  color: var(--b-500);
 }
 
 .tab.active {
-  background: #3370ff;
-  color: #ffffff;
-  border-color: #3370ff;
+  color: var(--b-500);
 }
 
+.tab.active::after {
+  content: '';
+  position: absolute;
+  bottom: -1px;
+  left: 0;
+  width: 100%;
+  height: 2px;
+  background: var(--b-500);
+  border-radius: 2px 2px 0 0;
+}
+
+/* Page & Panels */
 .page {
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: var(--spacing-l);
 }
 
 .page.hidden {
   display: none;
 }
 
+.panel {
+  background: var(--n-00);
+  border-radius: var(--radius-xl); /* 12px */
+  padding: var(--spacing-l);
+  border: 1px solid var(--n-300); /* 增加卡片描边 */
+  box-shadow: 0 4px 10px rgba(31, 35, 41, 0.04); /* 调淡阴影 */
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-l);
+}
+
+/* Form Fields */
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-s); /* Label与控件间距 */
+}
+
+.field label {
+  font-size: 14px;
+  color: var(--n-900);
+  font-weight: 500;
+}
+
+select {
+  height: 32px; /* 中等尺寸 */
+  border-radius: var(--radius-s); /* 4px */
+  border: 1px solid var(--n-400);
+  padding: 0 8px;
+  font-size: 14px;
+  color: var(--n-900);
+  background: var(--n-00);
+  outline: none;
+  transition: border-color 0.2s;
+}
+
+select:hover {
+  border-color: var(--b-500);
+}
+
+select:focus {
+  border-color: var(--b-500);
+  box-shadow: 0 0 0 2px rgba(51, 112, 255, 0.2);
+}
+
+/* Toggles */
+.toggles {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--spacing-l);
+  padding-top: var(--spacing-xs);
+}
+
+.toggles label {
+  display: flex;
+  gap: var(--spacing-s);
+  align-items: center;
+  font-size: 14px;
+  color: var(--n-900);
+  cursor: pointer;
+  font-weight: 400;
+}
+
+input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+  margin: 0;
+  accent-color: var(--b-500);
+  cursor: pointer;
+}
+
+/* Actions & Buttons */
+.actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--spacing-m); /* 按钮间距 12px */
+  margin-top: var(--spacing-xs);
+}
+
+button {
+  height: 32px; /* 中等尺寸 */
+  padding: 0 16px;
+  border-radius: var(--radius-s); /* 4px */
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  border: 1px solid transparent;
+  transition: all 0.2s;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* Primary Button */
+#runButton, .plan-action {
+  background: var(--b-500);
+  color: var(--n-00);
+  border-color: var(--b-500);
+}
+
+#runButton:hover, .plan-action:hover {
+  background: var(--b-400);
+  border-color: var(--b-400);
+}
+
+#runButton:active, .plan-action:active {
+  background: var(--b-600);
+  border-color: var(--b-600);
+}
+
+#runButton:disabled, .plan-action:disabled {
+  background: var(--n-200);
+  border-color: var(--n-200);
+  color: var(--n-500);
+  cursor: not-allowed;
+}
+
+/* Danger Button (Stop) */
+#stopButton {
+  background: var(--n-00);
+  color: var(--red-500);
+  border: 1px solid var(--red-500);
+}
+
+#stopButton:hover {
+  background: rgba(245, 74, 69, 0.1);
+}
+
+#stopButton:active {
+  background: rgba(245, 74, 69, 0.2);
+}
+
+#stopButton:disabled {
+  background: var(--n-200);
+  border-color: var(--n-200);
+  color: var(--n-500);
+  cursor: not-allowed;
+}
+
+/* Status & Progress */
+.status-title {
+  font-weight: 600;
+  color: var(--n-900);
+  font-size: 16px;
+  margin-bottom: var(--spacing-xs);
+}
+
+.status {
+  font-size: 14px;
+  color: var(--n-900);
+}
+
+.progress {
+  font-size: 12px;
+  color: var(--n-600);
+  white-space: pre-wrap;
+  line-height: 1.6;
+  background: var(--n-100);
+  padding: var(--spacing-m);
+  border-radius: var(--radius-s);
+  max-height: 200px;
+  overflow-y: auto;
+}
+
+/* Subscription Page */
 .plan-list {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: var(--spacing-m);
 }
 
 .plan-card {
-  border: 1px solid #d0d3d6;
-  border-radius: 10px;
-  padding: 12px;
+  border: 1px solid var(--n-300);
+  border-radius: var(--radius-l); /* 8px */
+  padding: var(--spacing-l);
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 12px;
+  gap: var(--spacing-m);
+  background: var(--n-00);
+  transition: border-color 0.2s;
+}
+
+.plan-card:hover {
+  border-color: var(--b-500);
 }
 
 .plan-info {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: var(--spacing-xs);
 }
 
 .plan-title {
   font-weight: 600;
+  color: var(--n-900);
+  font-size: 16px;
 }
 
 .plan-note {
   font-size: 12px;
-  color: #646a73;
+  color: var(--n-500);
 }
 
-.plan-action {
-  height: 32px;
-  padding: 0 12px;
-  border-radius: 8px;
-  border: 1px solid #3370ff;
-  background: #3370ff;
-  color: #fff;
-  cursor: pointer;
-  white-space: nowrap;
-}
-
-.panel {
-  background: #ffffff;
-  border-radius: 12px;
-  padding: 16px;
-  box-shadow: 0 4px 10px rgba(31, 35, 41, 0.08);
-  display: flex;
-  flex-direction: column;
-  gap: 14px;
-}
-
-.field {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-
-.field label {
-  font-size: 13px;
-  color: #646a73;
-}
-
-select,
-button {
-  height: 36px;
-  border-radius: 8px;
-  border: 1px solid #d0d3d6;
-  padding: 0 12px;
+/* Policy Links */
+.policy-link {
+  color: var(--b-500);
+  text-decoration: none;
   font-size: 14px;
-}
-
-select {
-  background: #fff;
-}
-
-.toggles {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 12px;
-}
-
-.toggles label {
-  display: flex;
-  gap: 6px;
-  align-items: center;
-  font-size: 13px;
-}
-
-.actions {
-  display: flex;
-  justify-content: flex-end;
-}
-
-button {
-  background: #3370ff;
-  color: #fff;
-  border: none;
   cursor: pointer;
 }
 
-button:disabled {
-  background: #a0a4ab;
-  cursor: not-allowed;
+.policy-link:hover {
+  text-decoration: underline;
 }
 
-.status-title {
-  font-weight: 600;
+/* Scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
 }
 
-.status {
-  font-size: 14px;
-  color: #1f2329;
+::-webkit-scrollbar-thumb {
+  background: #d9d9d9;
+  border-radius: 3px;
 }
 
-.progress {
-  font-size: 12px;
-  color: #646a73;
-  white-space: pre-wrap;
-  line-height: 1.4;
+::-webkit-scrollbar-thumb:hover {
+  background: #bfbfbf;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
 }
