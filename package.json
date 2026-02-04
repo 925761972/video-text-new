@@ -14,7 +14,8 @@
   "dependencies": {
     "@lark-base-open/js-sdk": "^1.0.0",
     "dotenv": "^17.2.3",
-    "express": "^4.19.2"
+    "express": "^4.19.2",
+    "youtube-dl-exec": "^3.0.30"
   },
   "devDependencies": {
     "concurrently": "^9.0.0",

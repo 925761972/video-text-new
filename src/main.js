@@ -51,7 +51,7 @@ const allowedFormats = new Set(
 const maxAttachmentSizeMb = Number(import.meta.env?.VITE_MAX_ATTACHMENT_MB || "200");
 const maxAttachmentSizeBytes =
   Number.isFinite(maxAttachmentSizeMb) && maxAttachmentSizeMb > 0 ? maxAttachmentSizeMb * 1024 * 1024 : 200 * 1024 * 1024;
-const concurrencyLimit = Math.min(parsePositiveInt(import.meta.env?.VITE_CONCURRENCY || "10", 10), 50);
+const concurrencyLimit = Math.min(parsePositiveInt(import.meta.env?.VITE_CONCURRENCY || "3", 3), 50);
 
 const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -417,7 +417,7 @@ const transcribeWithPolling = async (payload) => {
   throw new Error("识别超时");
 };
 
-const transcribeWithRetry = async (payload, retries = 2) => {
+const transcribeWithRetry = async (payload, retries = 5) => {
   let lastError;
   for (let i = 0; i <= retries; i += 1) {
     if (shouldStop) throw new Error("用户停止");
@@ -428,12 +428,17 @@ const transcribeWithRetry = async (payload, retries = 2) => {
       // 如果是“用户停止”错误，直接抛出，不重试
       if (error.message === "用户停止") throw error;
       
+      // 检查是否是 QPS 超限错误
+      const isQpsError = error.message?.includes("45000292") || error.message?.includes("quota exceeded");
+      
       // 最后一次尝试失败，抛出错误
       if (i === retries) break;
       
-      console.warn(`第 ${i + 1} 次尝试失败，准备重试:`, error.message);
+      const retryWaitMs = isQpsError ? 2000 * (i + 1) : 1000 * (i + 1);
+      console.warn(`第 ${i + 1} 次尝试失败，${isQpsError ? "QPS超限，" : ""}准备重试:`, error.message);
+      
       // 等待一段时间后重试，递增等待时间
-      await wait(1000 * (i + 1));
+      await wait(retryWaitMs);
     }
   }
   throw lastError;
@@ -472,9 +477,49 @@ const run = async () => {
 
     let handled = 0;
     let processedRecords = 0;
-    const totalRecords = records.length;
     
-    const tasks = records.map((record) => async () => {
+    // 1. 快速筛选出真正需要处理的记录
+    const pendingRecords = [];
+    
+    // 如果不需要跳过已有内容，那么所有记录都是 pending
+    // 如果需要跳过，则先同步检查一遍
+    if (!skipExistingOutputToggle?.checked) {
+      pendingRecords.push(...records);
+    } else {
+      // 快速同步检查
+      for (const record of records) {
+        const recordId = record.recordId;
+        const recordFields = record.fields || {};
+        const outputValue = recordFields[outputFieldId];
+        
+        let exists = false;
+        if (outputValue !== null && outputValue !== undefined) {
+           if (typeof outputValue === "string") {
+             exists = outputValue.trim().length > 0;
+           } else if (Array.isArray(outputValue)) {
+             const allText = outputValue
+               .map(item => (item && typeof item === 'object' && item.text) ? String(item.text) : '')
+               .join('');
+             exists = allText.trim().length > 0;
+           } else {
+             exists = String(outputValue).trim().length > 0;
+           }
+        }
+        
+        if (exists) {
+          processedRecords += 1;
+        } else {
+          pendingRecords.push(record);
+        }
+      }
+      // 更新状态
+      setStatus(`已跳过 ${processedRecords} 条，剩余 ${pendingRecords.length} 条待处理`);
+    }
+
+    const totalRecords = records.length; // 总数保持不变
+    
+    // 2. 只为需要处理的记录创建任务
+    const tasks = pendingRecords.map((record) => async () => {
       const recordId = record.recordId;
       try {
         if (!record) {
@@ -483,35 +528,11 @@ const run = async () => {
           return;
         }
 
-        // 直接从 record.fields 获取数据，不调用 getCellByField
         const recordFields = record.fields || {};
-
-        if (skipExistingOutputToggle?.checked) {
-          const outputValue = recordFields[outputFieldId];
-          let exists = false;
-          if (outputValue !== null && outputValue !== undefined) {
-             if (typeof outputValue === "string") {
-               exists = outputValue.trim().length > 0;
-             } else if (Array.isArray(outputValue)) {
-               // 如果是数组，可能是富文本片段，需要提取所有 text 并检查是否为空
-               // 例如 [{ type: 'text', text: ' ' }] 这种也应该视为空
-               const allText = outputValue
-                 .map(item => (item && typeof item === 'object' && item.text) ? String(item.text) : '')
-                 .join('');
-               exists = allText.trim().length > 0;
-             } else {
-               exists = String(outputValue).trim().length > 0;
-             }
-          }
-          
-          if (exists) {
-            processedRecords += 1;
-            pushProgress(`跳过: ${recordId} - 写入字段已有内容`);
-            setStatus(`处理中 ${processedRecords}/${totalRecords}`);
-            return;
-          }
-        }
-
+        // 这里再次检查 skip 逻辑其实是多余的，因为上面已经过滤了。
+        // 但为了代码结构的完整性，或者防止 toggles 变动（虽然运行中不应变动），保留也无妨。
+        // 不过为了极致速度，这里可以直接去掉 skip 检查逻辑。
+        
         const attachmentValue = recordFields[attachmentFieldId];
         if (!attachmentValue || attachmentValue.length === 0) {
           processedRecords += 1;
@@ -520,14 +541,12 @@ const run = async () => {
         }
 
         const texts = [];
-        // attachmentValue 应该是文件数组
         const files = Array.isArray(attachmentValue) ? attachmentValue : [attachmentValue];
         
         for (const file of files) {
           const fileName = file?.name || "";
           const fileToken = file?.token;
           if (!fileToken) {
-             // 如果不是文件对象，跳过
             continue;
           }
           const validation = validateAttachment(file);
