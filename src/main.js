@@ -51,7 +51,7 @@ const allowedFormats = new Set(
 const maxAttachmentSizeMb = Number(import.meta.env?.VITE_MAX_ATTACHMENT_MB || "200");
 const maxAttachmentSizeBytes =
   Number.isFinite(maxAttachmentSizeMb) && maxAttachmentSizeMb > 0 ? maxAttachmentSizeMb * 1024 * 1024 : 200 * 1024 * 1024;
-const concurrencyLimit = Math.min(parsePositiveInt(import.meta.env?.VITE_CONCURRENCY || "2", 2), 5);
+const concurrencyLimit = Math.min(parsePositiveInt(import.meta.env?.VITE_CONCURRENCY || "10", 10), 50);
 
 const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -417,6 +417,28 @@ const transcribeWithPolling = async (payload) => {
   throw new Error("识别超时");
 };
 
+const transcribeWithRetry = async (payload, retries = 2) => {
+  let lastError;
+  for (let i = 0; i <= retries; i += 1) {
+    if (shouldStop) throw new Error("用户停止");
+    try {
+      return await transcribeWithPolling(payload);
+    } catch (error) {
+      lastError = error;
+      // 如果是“用户停止”错误，直接抛出，不重试
+      if (error.message === "用户停止") throw error;
+      
+      // 最后一次尝试失败，抛出错误
+      if (i === retries) break;
+      
+      console.warn(`第 ${i + 1} 次尝试失败，准备重试:`, error.message);
+      // 等待一段时间后重试，递增等待时间
+      await wait(1000 * (i + 1));
+    }
+  }
+  throw lastError;
+};
+
 const run = async () => {
   if (!state.table) {
     return;
@@ -441,75 +463,111 @@ const run = async () => {
   try {
     const attachmentFieldId = attachmentSelect.value;
     const outputFieldId = outputSelect.value;
-    const recordIdList = await state.table.getRecordIdList();
-    const recordList = await state.table.getRecordList();
+    
+    // 使用 getRecords 批量获取数据，避免 getRecordById 可能的报错
+    const { records } = await state.table.getRecords({
+      pageSize: 5000, // 假设一次性能拿完，如果超过需要分页，但这里先简化
+      fieldIdList: [attachmentFieldId, outputFieldId] // 仅获取相关字段，提升速度
+    });
 
     let handled = 0;
     let processedRecords = 0;
-    const totalRecords = recordIdList.length;
-    const tasks = recordIdList.map((recordId) => async () => {
-      const record = await recordList.getRecordById(recordId);
-      if (!record) {
-        processedRecords += 1;
-        setStatus(`处理中 ${processedRecords}/${totalRecords}`);
-        return;
-      }
-      if (skipExistingOutputToggle?.checked) {
-        const exists = await hasExistingOutput(record, outputFieldId);
-        if (exists) {
+    const totalRecords = records.length;
+    
+    const tasks = records.map((record) => async () => {
+      const recordId = record.recordId;
+      try {
+        if (!record) {
           processedRecords += 1;
-          pushProgress(`跳过: ${recordId} - 写入字段已有内容`);
           setStatus(`处理中 ${processedRecords}/${totalRecords}`);
           return;
         }
-      }
-      const cell = await record.getCellByField(attachmentFieldId);
-      const attachmentValue = await cell.getValue();
-      if (!attachmentValue || attachmentValue.length === 0) {
+
+        // 直接从 record.fields 获取数据，不调用 getCellByField
+        const recordFields = record.fields || {};
+
+        if (skipExistingOutputToggle?.checked) {
+          const outputValue = recordFields[outputFieldId];
+          let exists = false;
+          if (outputValue !== null && outputValue !== undefined) {
+             if (typeof outputValue === "string") {
+               exists = outputValue.trim().length > 0;
+             } else if (Array.isArray(outputValue)) {
+               // 如果是数组，可能是富文本片段，需要提取所有 text 并检查是否为空
+               // 例如 [{ type: 'text', text: ' ' }] 这种也应该视为空
+               const allText = outputValue
+                 .map(item => (item && typeof item === 'object' && item.text) ? String(item.text) : '')
+                 .join('');
+               exists = allText.trim().length > 0;
+             } else {
+               exists = String(outputValue).trim().length > 0;
+             }
+          }
+          
+          if (exists) {
+            processedRecords += 1;
+            pushProgress(`跳过: ${recordId} - 写入字段已有内容`);
+            setStatus(`处理中 ${processedRecords}/${totalRecords}`);
+            return;
+          }
+        }
+
+        const attachmentValue = recordFields[attachmentFieldId];
+        if (!attachmentValue || attachmentValue.length === 0) {
+          processedRecords += 1;
+          setStatus(`处理中 ${processedRecords}/${totalRecords}`);
+          return;
+        }
+
+        const texts = [];
+        // attachmentValue 应该是文件数组
+        const files = Array.isArray(attachmentValue) ? attachmentValue : [attachmentValue];
+        
+        for (const file of files) {
+          const fileName = file?.name || "";
+          const fileToken = file?.token;
+          if (!fileToken) {
+             // 如果不是文件对象，跳过
+            continue;
+          }
+          const validation = validateAttachment(file);
+          if (!validation.ok) {
+            pushProgress(`失败: ${fileName || recordId} - ${validation.reason}`);
+            continue;
+          }
+          const durationMs = getAttachmentDurationMs(file);
+          const attachmentUrl = await state.table.getAttachmentUrl(fileToken);
+          try {
+            const text = await transcribeWithRetry({
+              audioUrl: attachmentUrl,
+              format: validation.extension,
+              baseId: state.baseId,
+              language: languageSelect.value,
+              modelVersion: modelVersionSelect.value,
+              enableItn: enableItnToggle.checked,
+              enablePunc: enablePuncToggle.checked,
+              enableDdc: enableDdcToggle.checked,
+              showUtterances: showUtterancesToggle.checked,
+              durationMs: durationMs > 0 ? durationMs : undefined
+            });
+            texts.push(text);
+            handled += 1;
+            pushProgress(`完成: ${fileName || recordId}`);
+          } catch (error) {
+            pushProgress(`失败: ${fileName || recordId} - ${error.message}`);
+          }
+        }
+        if (texts.length > 0) {
+          await state.table.setCellValue(outputFieldId, recordId, texts.join("\n\n"));
+        }
         processedRecords += 1;
         setStatus(`处理中 ${processedRecords}/${totalRecords}`);
-        return;
+      } catch (error) {
+        console.error(`处理记录失败: ${recordId}`, error);
+        pushProgress(`出错: ${recordId} - ${error.message || "未知错误"}`);
+        processedRecords += 1;
+        setStatus(`处理中 ${processedRecords}/${totalRecords}`);
       }
-      const texts = [];
-      for (const file of attachmentValue) {
-        const fileName = file?.name || "";
-        const fileToken = file?.token;
-        if (!fileToken) {
-          pushProgress(`失败: ${fileName || recordId} - 缺少文件标识`);
-          continue;
-        }
-        const validation = validateAttachment(file);
-        if (!validation.ok) {
-          pushProgress(`失败: ${fileName || recordId} - ${validation.reason}`);
-          continue;
-        }
-        const durationMs = getAttachmentDurationMs(file);
-        const attachmentUrl = await state.table.getAttachmentUrl(fileToken);
-        try {
-          const text = await transcribeWithPolling({
-            audioUrl: attachmentUrl,
-            format: validation.extension,
-            baseId: state.baseId,
-            language: languageSelect.value,
-            modelVersion: modelVersionSelect.value,
-            enableItn: enableItnToggle.checked,
-            enablePunc: enablePuncToggle.checked,
-            enableDdc: enableDdcToggle.checked,
-            showUtterances: showUtterancesToggle.checked,
-            durationMs: durationMs > 0 ? durationMs : undefined
-          });
-          texts.push(text);
-          handled += 1;
-          pushProgress(`完成: ${fileName || recordId}`);
-        } catch (error) {
-          pushProgress(`失败: ${fileName || recordId} - ${error.message}`);
-        }
-      }
-      if (texts.length > 0) {
-        await state.table.setCellValue(outputFieldId, recordId, texts.join("\n\n"));
-      }
-      processedRecords += 1;
-      setStatus(`处理中 ${processedRecords}/${totalRecords}`);
     });
 
     await runWithConcurrency(tasks, concurrencyLimit);

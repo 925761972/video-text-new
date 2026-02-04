@@ -95,7 +95,7 @@ export const queryTask = async (req, res) => {
   if (result.statusCode && result.statusCode !== "20000001" && result.statusCode !== "20000002") {
     res.json({
       status: "failed",
-      message: result.result?.message || "识别失败",
+      message: `[${result.statusCode}] ${result.result?.message || "识别失败"}`,
       logId: result.logId
     });
     return;
